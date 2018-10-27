@@ -15,11 +15,11 @@ import rlbotexample.vector.Vector2;
 
 import java.awt.*;
 
-public class SampleBot implements Bot {
+public class VolleyBot implements Bot {
 
     private final int playerIndex;
 
-    public SampleBot(int playerIndex) {
+    public VolleyBot(int playerIndex) {
         this.playerIndex = playerIndex;
     }
 

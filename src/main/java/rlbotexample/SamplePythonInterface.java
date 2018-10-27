@@ -11,6 +11,6 @@ public class SamplePythonInterface extends DefaultPythonInterface {
     }
 
     protected Bot initBot(int index, String botType, int team) {
-        return new SampleBot(index);
+        return new VolleyBot(index);
     }
 }

@@ -17,6 +17,8 @@ public class DataPacket {
     /** Your own car, based on the playerIndex */
     public final CarData car;
 
+    public final CarData enemyCar;
+
     public final List<CarData> allCars;
 
     public final BallData ball;
@@ -36,6 +38,8 @@ public class DataPacket {
         }
 
         this.car = allCars.get(playerIndex);
+
+        this.enemyCar = allCars.size() > 1 ? allCars.get(1 - playerIndex) : null;
         this.team = this.car.team;
     }
 }

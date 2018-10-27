@@ -10,14 +10,30 @@ import rlbot.render.Renderer;
 import rlbotexample.boost.BoostManager;
 import rlbotexample.input.CarData;
 import rlbotexample.input.DataPacket;
+import rlbotexample.intercept.BallPath;
+import rlbotexample.intercept.CarDistance;
+import rlbotexample.intercept.Intercept;
+import rlbotexample.intercept.InterceptCalculator;
 import rlbotexample.output.ControlsOutput;
+import rlbotexample.plan.Plan;
+import rlbotexample.skills.DribbleMode;
+import rlbotexample.skills.TimedAction;
+import rlbotexample.skills.Volley;
 import rlbotexample.vector.Vector2;
+import rlbotexample.vector.Vector3;
 
 import java.awt.*;
+import java.io.IOException;
+
+import static rlbotexample.skills.Volley.VOLLEY_HEIGHT;
 
 public class VolleyBot implements Bot {
 
+    private static final float BALL_RADIUS = 92.75F;
+
     private final int playerIndex;
+
+    private Plan plan;
 
     public VolleyBot(int playerIndex) {
         this.playerIndex = playerIndex;
@@ -27,32 +43,81 @@ public class VolleyBot implements Bot {
      * This is where we keep the actual bot logic. This function shows how to chase the ball.
      * Modify it to make your bot smarter!
      */
-    private ControlsOutput processInput(DataPacket input) {
+    private ControlsOutput processInput(DataPacket input) throws IOException {
 
-        Vector2 ballPosition = input.ball.position.flatten();
-        CarData myCar = input.car;
-        Vector2 carPosition = myCar.position.flatten();
-        Vector2 carDirection = myCar.orientation.noseVector.flatten();
 
-        // Subtract the two positions to get a vector pointing from the car to the ball.
-        Vector2 carToBall = ballPosition.minus(carPosition);
 
-        // How far does the car need to rotate before it's pointing exactly at the ball?
-        double steerCorrectionRadians = carDirection.correctionAngle(carToBall);
 
-        boolean goLeft = steerCorrectionRadians > 0;
 
-        // This is optional!
-        drawDebugLines(input, myCar, goLeft);
-
-        // This is also optional!
-        if (input.ball.position.z > 300) {
-            RLBotDll.sendQuickChat(playerIndex, false, QuickChatSelection.Compliments_NiceOne);
+        if (plan != null) {
+            ControlsOutput planOutput = plan.getOutput(input, this);
+            if (planOutput == null) {
+                plan = null;
+            } else {
+                return planOutput;
+            }
         }
 
-        return new ControlsOutput()
-                .withSteer(goLeft ? -1 : 1)
-                .withThrottle(1);
+        boolean isKickoff = input.ball.velocity.flatten().magnitude() < 1;
+
+        if (isKickoff) {
+
+            if (input.car.position.magnitude() < 1100) {
+                plan = new Plan()
+                        .withStep(new TimedAction(0.1, new ControlsOutput().withJump()))
+                        .withStep(new TimedAction(0.05, new ControlsOutput()))
+                        .withStep(new TimedAction(0.05, new ControlsOutput().withJump().withPitch(-1)));
+            }
+
+            return Steering.steerTowardPosition(input.car, new Vector3())
+                    .withBoost();
+        }
+
+        Vector3 ballPosition = input.ball.position;
+        boolean canPopBall = ballPosition.z > BALL_RADIUS * 1.5 &&
+                ballPosition.z < BALL_RADIUS * 3 &&
+                ballPosition.flatten().distance(input.car.position.flatten()) < 50;
+
+        Renderer renderer = BotLoopRenderer.forBotLoop(this);
+
+        if (canPopBall) {
+            renderer.drawString2d("Can pop!", Color.white, new Point(10, 200), 2, 2);
+            plan = new Plan()
+                    .withStep(new TimedAction(0.2, new ControlsOutput().withJump()))
+                    .withStep(new TimedAction(0.05, new ControlsOutput()))
+                    .withStep(new TimedAction(0.05, new ControlsOutput().withJump().withPitch(1)));
+            return plan.getOutput(input, this);
+        }
+
+
+        try {
+            BallPath ballPath = new BallPath(RLBotDll.getBallPrediction());
+
+            if (input.ball.position.z > VOLLEY_HEIGHT) {
+                Intercept volleyPoint = InterceptCalculator.getVolleyPoint(ballPath, input.car, VOLLEY_HEIGHT);
+
+                if (volleyPoint != null) {
+                    renderer.drawString2d("Volley available!", Color.white, new Point(10, 200), 2, 2);
+
+                    plan = new Plan().withStep(new Volley());
+                    return plan.getOutput(input, this);
+                }
+
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+
+
+
+        // final double maxDistanceOfEnemy = CarDistance.maxDistance(2.0, input.enemyCar, new Vector3());
+
+        // renderer.drawString2d("enemyMaxDistance: " + maxDistanceOfEnemy, Color.white, new Point(20, 20), 2, 2);
+
+        DribbleMode dribbleMode = new DribbleMode();
+        return dribbleMode.getOutput(input, this);
+//        return new ControlsOutput().withThrottle(1.0F);
     }
 
     /**
@@ -99,9 +164,13 @@ public class VolleyBot implements Bot {
         DataPacket dataPacket = new DataPacket(packet, playerIndex);
 
         // Do the actual logic using our dataPacket.
-        ControlsOutput controlsOutput = processInput(dataPacket);
 
-        return controlsOutput;
+        try {
+            return processInput(dataPacket);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return new ControlsOutput();
+        }
     }
 
     public void retire() {

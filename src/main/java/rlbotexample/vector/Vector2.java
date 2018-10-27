@@ -92,10 +92,21 @@ public class Vector2 {
         return idealRad - currentRad;
     }
 
+    public Vector2 orthogonal(boolean left) {
+        if (left) {
+            return new Vector2(-y, x);
+        }
+        return new Vector2(y, -x);
+    }
+
     /**
      * Will always return a positive value <= Math.PI
      */
     public static double angle(Vector2 a, Vector2 b) {
         return Math.abs(a.correctionAngle(b));
+    }
+
+    public Vector3 withZ(int z) {
+        return new Vector3(x, y, z);
     }
 }
